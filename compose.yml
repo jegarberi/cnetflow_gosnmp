@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    environment:
+      - PG_CONN_STRING=postgresql://cnetflow:cnetflow_password_very_diciful@192.168.100.78:5432/cnetflow
+    #depends_on:
+    #  db:
+    #    condition: service_healthy
+    restart: unless-stopped
+
+  #db:
+  #  image: postgres:15-alpine
+  #  environment:
+  #    - POSTGRES_DB=netflow
+  #    - POSTGRES_USER=netflow
+  #    - POSTGRES_PASSWORD=netflow123
+  #  volumes:
+  #    - postgres_data:/var/lib/postgresql/data
+  #    - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  #  ports:
+  #    - "5432:5432"
+  #  healthcheck:
+  #    test: ["CMD-SHELL", "pg_isready -U netflow -d netflow"]
+  #    interval: 5s
+  #    timeout: 5s
+  #    retries: 5
+  #  restart: unless-stopped
