@@ -88,16 +88,16 @@ const (
 
 var config Config
 
-func saveSNMPCredentials(e Exporter, idx int) (bool, error) {
+func saveSNMPCredentials(e Exporter, idx int, name string) (bool, error) {
 	cred := config.snmp[idx]
 	exporterId := e.ID
 	var err error
 	var _ sql.Result
 	if cred.Version == 1 || cred.Version == 2 {
-		_, err = config.db.Exec("UPDATE exporters SET snmp_version = $1, snmp_community = $2 WHERE id = $3;", cred.Version, cred.Community, exporterId)
+		_, err = config.db.Exec("UPDATE exporters SET snmp_version = $1, snmp_community = $2, name = $3 WHERE id = $4;", cred.Version, cred.Community, name, exporterId)
 	} else if cred.Version == 3 {
-		_, err = config.db.Exec("update exporters set snmp_version = 3, snmpv3_username = $1, snmpv3_level = $2, snmpv3_auth_proto = $3, snmpv3_auth_pass = $4,snmpv3_priv_proto = $5 , snmpv3_priv_pass = $6 where id = $7",
-			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, exporterId)
+		_, err = config.db.Exec("update exporters set snmp_version = 3, snmpv3_username = $1, snmpv3_level = $2, snmpv3_auth_proto = $3, snmpv3_auth_pass = $4,snmpv3_priv_proto = $5 , snmpv3_priv_pass = $6, name = $7 where id = $8",
+			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, name, exporterId)
 	} else {
 		err = fmt.Errorf("invalid version")
 
@@ -111,8 +111,11 @@ func saveSNMPCredentials(e Exporter, idx int) (bool, error) {
 
 func detectSNMPCredentials(e Exporter) (int, error) {
 	var g *gosnmp.GoSNMP
-
+	var name string
+	var oids []string
+	oids = append(oids, SysDescr)
 	for idx, cred := range config.snmp {
+		name = ""
 		log.Printf("Exporter: %s SNMP credential %d: %v\n", e.IPInet, idx, cred)
 		if cred.Version == 1 || cred.Version == 2 {
 			var version gosnmp.SnmpVersion
@@ -139,8 +142,7 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 					log.Println("Error closing connection: ", err)
 				}
 			}(g.Conn)
-			var oids []string
-			oids = append(oids, SysDescr)
+
 			pkt, err := g.Get(oids)
 			if err != nil {
 				continue
@@ -148,13 +150,14 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 			if pkt == nil || pkt.Error != gosnmp.NoError {
 				continue
 			}
+
 			for _, pdu := range pkt.Variables {
 
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
 				log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
-
+				name = string(pdu.Value.([]byte))
 			}
-			credentials, err := saveSNMPCredentials(e, idx)
+			credentials, err := saveSNMPCredentials(e, idx, name)
 			if err != nil {
 				log.Println("Could not save credentials: ", err)
 			}
@@ -215,8 +218,7 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 					log.Println("Error closing connection: ", err)
 				}
 			}(g.Conn)
-			var oids []string
-			oids = append(oids, SysDescr)
+
 			pkt, err := g.Get(oids)
 			if err != nil {
 				continue
@@ -226,8 +228,10 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 			}
 			for _, pdu := range pkt.Variables {
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
+				log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
+				name = string(pdu.Value.([]byte))
 			}
-			credentials, err := saveSNMPCredentials(e, idx)
+			credentials, err := saveSNMPCredentials(e, idx, name)
 			if err != nil {
 				log.Println("Could not save credentials: ", err)
 			}
