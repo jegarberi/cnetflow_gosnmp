@@ -576,7 +576,10 @@ func main() {
 	config.exporters, err = getExporters()
 	for _, e := range config.exporters {
 		exporter := e
-		detectSNMPCredentials(exporter)
+		_, err := detectSNMPCredentials(exporter)
+		if err != nil {
+			return
+		}
 	}
 	config.exporters, err = getExporters()
 	config.interfaces, err = getInterfaces()
