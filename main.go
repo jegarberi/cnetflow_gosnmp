@@ -18,6 +18,15 @@ import (
 	"time"
 )
 
+type ExporterSNMPData struct {
+	SysDescr    string `json:"sysDescr"`
+	SysUptime   string `json:"sysUptime"`
+	SysName     string `json:"sysName"`
+	SysContact  string `json:"sysContact"`
+	SysLocation string `json:"sysLocation"`
+	SysObjectID string `json:"sysObjectID"`
+	SysServices string `json:"sysServices"`
+}
 type Interface struct {
 	ID          int64     `db:"id" json:"id"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
@@ -38,7 +47,7 @@ type Exporter struct {
 	SNMPVersion     *int16    `db:"snmp_version" json:"snmp_version,omitempty"`
 	SNMPCommunity   *string   `db:"snmp_community" json:"snmp_community,omitempty"`
 	SNMPv3Username  *string   `db:"snmpv3_username" json:"snmpv3_username,omitempty"`
-	SNMPv3Level     *int16    `db:"snmpv3_level" json:"snmpv3_level,omitempty"`
+	SNMPv3Level     *string   `db:"snmpv3_level" json:"snmpv3_level,omitempty"`
 	SNMPv3AuthProto *string   `db:"snmpv3_auth_proto" json:"snmpv3_auth_proto,omitempty"`
 	SNMPv3AuthPass  *string   `db:"snmpv3_auth_pass" json:"snmpv3_auth_pass,omitempty"`
 	SNMPv3PrivProto *string   `db:"snmpv3_priv_proto" json:"snmpv3_priv_proto,omitempty"`
@@ -72,9 +81,33 @@ type Config struct {
 const (
 	SysUptime = ".1.3.6.1.2.1.1.3.0"
 	SysDescr  = ".1.3.6.1.2.1.1.1.0"
+	ifDescr   = ".1.3.6.1.2.1.2.2.1.2."
+	ifName    = ".1.3.6.1.2.1.31.1.1.1.1."
+	ifAlias   = ".1.3.6.1.2.1.31.1.1.1.18."
 )
 
 var config Config
+
+func saveSNMPCredentials(e Exporter, idx int) (bool, error) {
+	cred := config.snmp[idx]
+	exporterId := e.ID
+	var err error
+	var _ sql.Result
+	if cred.Version == 1 || cred.Version == 2 {
+		_, err = config.db.Exec("UPDATE exporters SET snmp_version = $1, snmp_community = $2 WHERE id = $3;", cred.Version, cred.Community, exporterId)
+	} else if cred.Version == 3 {
+		_, err = config.db.Exec("update exporters set snmp_version = 3, snmpv3_username = $1, snmpv3_level = $2, snmpv3_auth_proto = $3, snmpv3_auth_pass = $4,snmpv3_priv_proto = $5 , snmpv3_priv_pass = $6 where id = $7",
+			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, exporterId)
+	} else {
+		err = fmt.Errorf("invalid version")
+
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+
+}
 
 func detectSNMPCredentials(e Exporter) (int, error) {
 	var g *gosnmp.GoSNMP
@@ -100,7 +133,12 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 			if err := g.Connect(); err != nil {
 				continue
 			}
-			defer g.Conn.Close()
+			defer func(Conn net.Conn) {
+				err := Conn.Close()
+				if err != nil {
+					log.Println("Error closing connection: ", err)
+				}
+			}(g.Conn)
 			var oids []string
 			oids = append(oids, SysDescr)
 			pkt, err := g.Get(oids)
@@ -115,6 +153,13 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
 				log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
 
+			}
+			credentials, err := saveSNMPCredentials(e, idx)
+			if err != nil {
+				log.Println("Could not save credentials: ", err)
+			}
+			if credentials {
+				log.Println("Credentials saved")
 			}
 			return idx, nil
 
@@ -167,7 +212,7 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 			defer func(Conn net.Conn) {
 				err := Conn.Close()
 				if err != nil {
-
+					log.Println("Error closing connection: ", err)
 				}
 			}(g.Conn)
 			var oids []string
@@ -180,8 +225,14 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 				continue
 			}
 			for _, pdu := range pkt.Variables {
-
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
+			}
+			credentials, err := saveSNMPCredentials(e, idx)
+			if err != nil {
+				log.Println("Could not save credentials: ", err)
+			}
+			if credentials {
+				log.Println("Credentials saved")
 			}
 			return idx, nil
 
@@ -195,7 +246,139 @@ func detectSNMPCredentials(e Exporter) (int, error) {
 
 func pollInterface(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 	defer wg.Done()
+	var g *gosnmp.GoSNMP
+	var oids []string
+	ifDescrOID := ifDescr + "." + fmt.Sprintf("%d", i.SNMPIndex)
+	oids = append(oids, ifDescrOID)
+	ifAliasOID := ifAlias + "." + fmt.Sprintf("%d", i.SNMPIndex)
+	oids = append(oids, ifAliasOID)
 	log.Println("Exporter: ", e, " Interface: ", i)
+	log.Println("OIDs: ", oids)
+	if *e.SNMPVersion == 1 || *e.SNMPVersion == 2 {
+		var version gosnmp.SnmpVersion
+		switch *e.SNMPVersion {
+		case 1:
+			version = gosnmp.Version1
+		case 2:
+			version = gosnmp.Version2c
+		}
+		g = &gosnmp.GoSNMP{
+			Target:    e.IPInet,
+			Port:      161,
+			Version:   version,
+			Timeout:   5 * time.Second,
+			Retries:   5,
+			Community: *e.SNMPCommunity,
+		}
+		if err := g.Connect(); err != nil {
+			log.Println("Error connecting to exporter: ", err)
+			return
+		}
+		defer func(Conn net.Conn) {
+			err := Conn.Close()
+			if err != nil {
+				log.Println("Error closing connection: ", err)
+			}
+		}(g.Conn)
+
+		pkt, err := g.Get(oids)
+		if err != nil {
+			return
+		}
+		if pkt == nil || pkt.Error != gosnmp.NoError {
+			log.Println("Error getting data: ", err)
+			return
+		}
+		for idx, pdu := range pkt.Variables {
+			fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
+			log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
+			val := fmt.Sprintf("%s", string(pdu.Value.([]byte)))
+			switch idx {
+			case 0:
+				i.Description = &val
+			case 1:
+				i.Alias = &val
+
+			}
+		}
+
+	} else if *e.SNMPVersion == 3 {
+		var ap gosnmp.SnmpV3MsgFlags
+		var authprot gosnmp.SnmpV3AuthProtocol
+		var privprot gosnmp.SnmpV3PrivProtocol
+		sl := strings.ToLower(*e.SNMPv3Level)
+		switch sl {
+		case "noauthnopriv":
+			ap = gosnmp.NoAuthNoPriv
+		case "authnopriv":
+			ap = gosnmp.AuthNoPriv
+		case "authpriv":
+			ap = gosnmp.AuthPriv
+		}
+		capr := strings.ToUpper(*e.SNMPv3AuthProto)
+		switch capr {
+		case "MD5":
+			authprot = gosnmp.MD5
+		case "SHA":
+			authprot = gosnmp.SHA
+		}
+		pvr := strings.ToUpper(*e.SNMPv3PrivProto)
+		switch pvr {
+		case "DES":
+			privprot = gosnmp.DES
+		case "AES":
+			privprot = gosnmp.AES
+		}
+		g = &gosnmp.GoSNMP{
+			Target:        e.IPInet,
+			Port:          161,
+			Version:       gosnmp.Version3,
+			Timeout:       5 * time.Second,
+			Retries:       5,
+			SecurityModel: gosnmp.UserSecurityModel,
+			MsgFlags:      ap, // or gosnmp.NoAuthNoPriv / gosnmp.AuthNoPriv
+			SecurityParameters: &gosnmp.UsmSecurityParameters{
+				UserName:                 *e.SNMPv3Username,
+				AuthenticationProtocol:   authprot, // or gosnmp.MD5, SHA224/256 if supported
+				AuthenticationPassphrase: *e.SNMPv3AuthPass,
+				PrivacyProtocol:          privprot, // or gosnmp.DES, AES192/256* if supported
+				PrivacyPassphrase:        *e.SNMPv3PrivPass,
+			},
+		}
+		if err := g.Connect(); err != nil {
+			log.Println("Error connecting to exporter: ", err)
+			return
+		}
+		defer func(Conn net.Conn) {
+			err := Conn.Close()
+			if err != nil {
+				log.Println("Error closing connection: ", err)
+			}
+		}(g.Conn)
+
+		pkt, err := g.Get(oids)
+		if err != nil {
+			log.Println("Error getting data: ", err)
+			return
+		}
+		if pkt == nil || pkt.Error != gosnmp.NoError {
+			log.Println("Error getting data: ", err)
+			return
+		}
+		for idx, pdu := range pkt.Variables {
+			fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
+			log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
+			val := fmt.Sprintf("%s", string(pdu.Value.([]byte)))
+			switch idx {
+			case 0:
+				i.Description = &val
+			case 1:
+				i.Alias = &val
+
+			}
+		}
+
+	}
 
 }
 
@@ -307,9 +490,9 @@ func getSnmpConfig() ([]SNMPCredential, error) {
 	if err := json.Unmarshal(data, &creds); err != nil {
 		log.Println(err)
 	}
-	fmt.Printf("parsed credentials %v\n", creds)
+	log.Printf("parsed credentials %v\n", creds)
 	for idx, cred := range creds {
-		fmt.Printf("creds[%d] = %v\n", idx, cred)
+		log.Printf("creds[%d] = %v\n", idx, cred)
 	}
 	return creds, nil
 }
@@ -391,11 +574,16 @@ func main() {
 		panic(err)
 	}
 	config.exporters, err = getExporters()
+	for _, e := range config.exporters {
+		exporter := e
+		detectSNMPCredentials(exporter)
+	}
+	config.exporters, err = getExporters()
 	config.interfaces, err = getInterfaces()
 
 	for _, e := range config.exporters {
 		exporter := e
-		detectSNMPCredentials(exporter)
+
 		for _, i := range config.interfaces {
 			config.wg.Add(1)
 			interfac := i
