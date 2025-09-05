@@ -28,34 +28,36 @@ type ExporterSNMPData struct {
 	SysServices string `json:"sysServices"`
 }
 type Interface struct {
-	ID          int64     `db:"id" json:"id"`
-	CreatedAt   time.Time `db:"created_at" json:"created_at"`
-	Exporter    int64     `db:"exporter" json:"exporter"`
-	SNMPIndex   int64     `db:"snmp_index" json:"snmp_index"`
-	Description string    `db:"description" json:"description,omitempty"`
-	Alias       string    `db:"alias" json:"alias,omitempty"`
-	Speed       uint64    `db:"speed" json:"speed,omitempty"`
-	Enabled     bool      `db:"enabled" json:"enabled,omitempty"`
-	Name        string    `db:"name" json:"name,omitempty"`
-	Polled      uint64    `db:"polled" json:"polled,omitempty"`
-	InOctets    uint64    `db:"in_octets" json:"in_octets,omitempty"`
-	OutOctets   uint64    `db:"out_octets" json:"out_octets,omitempty"`
+	ID             int64     `db:"id" json:"id"`
+	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+	Exporter       int64     `db:"exporter" json:"exporter"`
+	SNMPIndex      int64     `db:"snmp_index" json:"snmp_index"`
+	Description    string    `db:"description" json:"description,omitempty"`
+	Alias          string    `db:"alias" json:"alias,omitempty"`
+	Speed          uint64    `db:"speed" json:"speed,omitempty"`
+	Enabled        bool      `db:"enabled" json:"enabled,omitempty"`
+	Name           string    `db:"name" json:"name,omitempty"`
+	Polled         uint64    `db:"polled" json:"polled,omitempty"`
+	InOctets       uint64    `db:"in_octets" json:"in_octets,omitempty"`
+	OutOctets      uint64    `db:"out_octets" json:"out_octets,omitempty"`
+	ExporterStruct Exporter
 }
 
 type Exporter struct {
-	ID              int64     `db:"id" json:"id"`
-	CreatedAt       time.Time `db:"created_at" json:"created_at"`
-	IPBin           int32     `db:"ip_bin" json:"ip_bin"`
-	IPInet          string    `db:"ip_inet" json:"ip_inet"`
-	Name            string    `db:"name" json:"name"`
-	SNMPVersion     int16     `db:"snmp_version" json:"snmp_version,omitempty"`
-	SNMPCommunity   string    `db:"snmp_community" json:"snmp_community,omitempty"`
-	SNMPv3Username  string    `db:"snmpv3_username" json:"snmpv3_username,omitempty"`
-	SNMPv3Level     string    `db:"snmpv3_level" json:"snmpv3_level,omitempty"`
-	SNMPv3AuthProto string    `db:"snmpv3_auth_proto" json:"snmpv3_auth_proto,omitempty"`
-	SNMPv3AuthPass  string    `db:"snmpv3_auth_pass" json:"snmpv3_auth_pass,omitempty"`
-	SNMPv3PrivProto string    `db:"snmpv3_priv_proto" json:"snmpv3_priv_proto,omitempty"`
-	SNMPv3PrivPass  string    `db:"snmpv3_priv_pass" json:"snmpv3_priv_pass,omitempty"`
+	ID              int64       `db:"id" json:"id"`
+	CreatedAt       time.Time   `db:"created_at" json:"created_at"`
+	IPBin           int32       `db:"ip_bin" json:"ip_bin"`
+	IPInet          string      `db:"ip_inet" json:"ip_inet"`
+	Name            string      `db:"name" json:"name"`
+	SNMPVersion     int16       `db:"snmp_version" json:"snmp_version,omitempty"`
+	SNMPCommunity   string      `db:"snmp_community" json:"snmp_community,omitempty"`
+	SNMPv3Username  string      `db:"snmpv3_username" json:"snmpv3_username,omitempty"`
+	SNMPv3Level     string      `db:"snmpv3_level" json:"snmpv3_level,omitempty"`
+	SNMPv3AuthProto string      `db:"snmpv3_auth_proto" json:"snmpv3_auth_proto,omitempty"`
+	SNMPv3AuthPass  string      `db:"snmpv3_auth_pass" json:"snmpv3_auth_pass,omitempty"`
+	SNMPv3PrivProto string      `db:"snmpv3_priv_proto" json:"snmpv3_priv_proto,omitempty"`
+	SNMPv3PrivPass  string      `db:"snmpv3_priv_pass" json:"snmpv3_priv_pass,omitempty"`
+	Interfaces      []Interface `db:"interfaces" json:"interfaces,omitempty"`
 }
 
 type SNMPCredential struct {
@@ -72,14 +74,14 @@ type SNMPCredential struct {
 }
 
 type Config struct {
-	db         *sql.DB
-	mutex      sync.Mutex
-	exporters  []Exporter
-	interfaces []Interface
-	snmp       []SNMPCredential
-	start      time.Time
-	wg         sync.WaitGroup
-	chExit     chan bool
+	db        *sql.DB
+	mutex     sync.Mutex
+	exporters []Exporter
+
+	snmp   []SNMPCredential
+	start  time.Time
+	wg     sync.WaitGroup
+	chExit chan bool
 }
 
 const (
@@ -110,7 +112,6 @@ func saveInterfaceMetrics(i *Interface) (bool, error) {
 	var err error
 	var _ sql.Result
 	log.Println("Saving interface: ", i)
-	log.Println("speed: ", i.Speed)
 
 	_, err = config.db.Exec("INSERT into interface_metrics  (exporter,snmp_index,octets_in,octets_out) VALUES ($1,$2,$3,$4)", i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets)
 
@@ -696,8 +697,8 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 
 }
 
-func getInterfaces() ([]Interface, error) {
-	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces;")
+func getInterfaces(e Exporter) ([]Interface, error) {
+	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces where exporter = $1;", e.ID)
 	if err != nil {
 		log.Println("Error querying database: ", err)
 		return nil, err
@@ -886,23 +887,31 @@ func timer() {
 			log.Println("tick...", timer, " minutes elapsed")
 			if timer%60 == 0 {
 				config.exporters, _ = getExporters()
-				config.interfaces, _ = getInterfaces()
-
-				for _, e := range config.exporters {
+				for idx, e := range config.exporters {
+					config.exporters[idx].Interfaces, _ = getInterfaces(e)
+				}
+				for idx, e := range config.exporters {
 					exporter := e
-					detectSNMPCredentials(exporter)
-					for _, i := range config.interfaces {
+					detectSNMPCredentials(config.exporters[idx])
+					for _, i := range exporter.Interfaces {
 						if i.Enabled {
 							config.wg.Add(1)
 							log.Println("Polling interface: ", i)
 							go pollInterfaceData(&e, &i, &config.wg)
 						}
 					}
+
 				}
+				log.Println("Waiting for all pollInterfaceData goroutines to finish...")
+				config.wg.Wait()
+				log.Println("All done!!")
+				log.Println(config)
 			}
-			if timer%5 == 0 {
+			if timer%1 == 0 {
 				for _, e := range config.exporters {
-					for _, i := range config.interfaces {
+					log.Println(e)
+					for _, i := range e.Interfaces {
+						log.Println(i)
 						if i.Enabled {
 							config.wg.Add(1)
 							log.Println("Polling interface: ", i)
@@ -912,6 +921,8 @@ func timer() {
 				}
 				log.Println("Waiting for all pollInterfaceData goroutines to finish...")
 				config.wg.Wait()
+				log.Println("All done!!")
+				log.Println(config)
 			}
 
 		case <-sigCh:
@@ -952,22 +963,23 @@ func main() {
 		exporter := e
 		_, err := detectSNMPCredentials(exporter)
 		if err != nil {
-			return
+			log.Println("Error detecting SNMP credentials: ", err)
 		}
 	}
-	config.exporters, err = getExporters()
-	config.interfaces, err = getInterfaces()
+	config.exporters, _ = getExporters()
+	for idx, e := range config.exporters {
+		config.exporters[idx].Interfaces, _ = getInterfaces(e)
+	}
 
 	for _, e := range config.exporters {
 		exporter := e
-
-		for _, i := range config.interfaces {
+		for _, i := range exporter.Interfaces {
 			config.wg.Add(1)
 			interfac := i
 			log.Println("Starting goroutine for exporter: ", exporter, " interface: ", interfac)
 			go pollInterfaceData(&exporter, &interfac, &config.wg)
-			//config.wg.Add(1)
-			//go pollInterfaceOctets(&exporter, &interfac, &config.wg)
+			config.wg.Add(1)
+			go pollInterfaceOctets(&exporter, &interfac, &config.wg)
 		}
 	}
 	log.Println("Waiting for goroutines to finish...")
