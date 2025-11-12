@@ -1,0 +1,48 @@
+# Build for RHEL7 natively
+FROM centos:7
+
+
+RUN mkdir -p /etc/yum.repos.d/old
+RUN mv /etc/yum.repos.d/*.repo /etc/yum.repos.d/old/
+ADD centos-base.repo /etc/yum.repos.d/
+ADD epel.repo /etc/yum.repos.d/
+ADD centos-scl.repo /etc/yum.repos.d/
+RUN yum install -y epel-release
+RUN yum install -y \
+    cmake3
+# Install build dependencies
+RUN yum install -y \
+    gcc \
+    gcc-c++ \
+    make \
+    cmake3 \
+    wget \
+    tar \
+    rpm-build \
+    && yum clean all
+
+# Install Go 1.21+ (RHEL7 repos have old Go)
+ARG GO_VERSION=1.23.4
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
+    && rm go${GO_VERSION}.linux-amd64.tar.gz
+
+# Set Go environment
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV GO111MODULE=on
+
+# Set working directory
+WORKDIR /build
+
+# Copy project files
+COPY . .
+
+# Build the application using cmake3
+RUN mkdir -p build && cd build && \
+    cmake3 -DCMAKE_BUILD_TYPE=Release .. && \
+    make && \
+    make package
+
+# The RPM will be in /build/build/*.rpm
+CMD ["bash", "-c", "cp /build/build/*.rpm /output/ && ls -lh /output/"]
