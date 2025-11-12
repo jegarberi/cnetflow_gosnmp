@@ -21,6 +21,7 @@ FROM alpine:latest
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add tzdata
 
 WORKDIR /root/
 

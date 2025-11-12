@@ -1,3 +1,4 @@
 .idea
 cnetflow_gosnmp
 .env
+build
