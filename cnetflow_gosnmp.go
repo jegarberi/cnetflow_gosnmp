@@ -200,10 +200,16 @@ func detectSNMPCredentials(e Exporter, wg *sync.WaitGroup) (int, error) {
 			}
 
 			for _, pdu := range pkt.Variables {
-
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
-				log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
-				name = string(pdu.Value.([]byte))
+				if pdu.Value != nil {
+					switch v := pdu.Value.(type) {
+					case []byte:
+						name = string(v)
+					default:
+						name = fmt.Sprintf("%v", v)
+					}
+				}
+				log.Printf("%s = %s\n", pdu.Name, name)
 			}
 			credentials, err := saveSNMPCredentials(e, idx, name)
 			if err != nil {
@@ -276,8 +282,15 @@ func detectSNMPCredentials(e Exporter, wg *sync.WaitGroup) (int, error) {
 			}
 			for _, pdu := range pkt.Variables {
 				fmt.Printf("%s = %v\n", pdu.Name, pdu.Value)
-				log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
-				name = string(pdu.Value.([]byte))
+				if pdu.Value != nil {
+					switch v := pdu.Value.(type) {
+					case []byte:
+						name = string(v)
+					default:
+						name = fmt.Sprintf("%v", v)
+					}
+				}
+				log.Printf("%s = %s\n", pdu.Name, name)
 			}
 			credentials, err := saveSNMPCredentials(e, idx, name)
 			if err != nil {
@@ -348,6 +361,7 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 
 		pkt, err := g.Get(oids)
 		if err != nil {
+			log.Println("Error getting data: ", err)
 			return
 		}
 		if pkt == nil || pkt.Error != gosnmp.NoError {
@@ -360,17 +374,20 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			var _ string
 			var val_uint64 uint64
 
-			if pdu.Type == gosnmp.OctetString {
+			if pdu.Type == gosnmp.OctetString && pdu.Value != nil {
 				log.Println("pduType: OctetString")
-				_ = fmt.Sprintf("%s", string(pdu.Value.([]byte)))
-			} else if pdu.Type == gosnmp.Gauge32 {
-				log.Println("pduType: Gauge32")
-				val_uint64 = uint64(pdu.Value.(uint))
-				log.Println("Gauge32: ", val_uint64, "")
-			} else if pdu.Type == gosnmp.Counter32 {
-				val_uint64 = uint64(pdu.Value.(uint))
-			} else if pdu.Type == gosnmp.Counter64 {
-				val_uint64 = pdu.Value.(uint64)
+				if b, ok := pdu.Value.([]byte); ok {
+					_ = string(b)
+				}
+			} else if (pdu.Type == gosnmp.Gauge32 || pdu.Type == gosnmp.Counter32) && pdu.Value != nil {
+				log.Println("pduType: Gauge32/Counter32")
+				if v, ok := pdu.Value.(uint); ok {
+					val_uint64 = uint64(v)
+				}
+			} else if pdu.Type == gosnmp.Counter64 && pdu.Value != nil {
+				if v, ok := pdu.Value.(uint64); ok {
+					val_uint64 = v
+				}
 			} else {
 				_ = ""
 				val_uint64 = 0
@@ -458,17 +475,20 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			var _ string
 			var val_uint64 uint64
 
-			if pdu.Type == gosnmp.OctetString {
+			if pdu.Type == gosnmp.OctetString && pdu.Value != nil {
 				log.Println("pduType: OctetString")
-				_ = fmt.Sprintf("%s", string(pdu.Value.([]byte)))
-			} else if pdu.Type == gosnmp.Gauge32 {
-				log.Println("pduType: Gauge32")
-				val_uint64 = uint64(pdu.Value.(uint))
-				log.Println("Gauge32: ", val_uint64, "")
-			} else if pdu.Type == gosnmp.Counter32 {
-				val_uint64 = uint64(pdu.Value.(uint))
-			} else if pdu.Type == gosnmp.Counter64 {
-				val_uint64 = pdu.Value.(uint64)
+				if b, ok := pdu.Value.([]byte); ok {
+					_ = string(b)
+				}
+			} else if (pdu.Type == gosnmp.Gauge32 || pdu.Type == gosnmp.Counter32) && pdu.Value != nil {
+				log.Println("pduType: Gauge32/Counter32")
+				if v, ok := pdu.Value.(uint); ok {
+					val_uint64 = uint64(v)
+				}
+			} else if pdu.Type == gosnmp.Counter64 && pdu.Value != nil {
+				if v, ok := pdu.Value.(uint64); ok {
+					val_uint64 = v
+				}
 			} else {
 				_ = ""
 				val_uint64 = 0
@@ -556,6 +576,7 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 
 		pkt, err := g.Get(oids)
 		if err != nil {
+			log.Println("Error getting data: ", err)
 			return
 		}
 		if pkt == nil || pkt.Error != gosnmp.NoError {
@@ -568,12 +589,17 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			var val_string string
 			var val_uint64 uint64
 			log.Println("idx: ", idx)
-			if pdu.Type == gosnmp.OctetString {
+
+			if pdu.Type == gosnmp.OctetString && pdu.Value != nil {
 				log.Println("pduType: OctetString")
-				val_string = fmt.Sprintf("%s", string(pdu.Value.([]byte)))
-			} else if pdu.Type == gosnmp.Gauge32 {
+				if b, ok := pdu.Value.([]byte); ok {
+					val_string = string(b)
+				}
+			} else if pdu.Type == gosnmp.Gauge32 && pdu.Value != nil {
 				log.Println("pduType: Gauge32")
-				val_uint64 = uint64(pdu.Value.(uint))
+				if v, ok := pdu.Value.(uint); ok {
+					val_uint64 = uint64(v)
+				}
 				log.Println("Gauge32: ", val_uint64, "")
 			} else {
 				val_string = ""
@@ -661,12 +687,17 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			//log.Printf("%s = %s\n", pdu.Name, string(pdu.Value.([]byte)))
 			var val_string string
 			var val_uint64 uint64
-			if pdu.Type == gosnmp.OctetString {
+
+			if pdu.Type == gosnmp.OctetString && pdu.Value != nil {
 				log.Println("pduType: OctetString")
-				val_string = fmt.Sprintf("%s", string(pdu.Value.([]byte)))
-			} else if pdu.Type == gosnmp.Gauge32 {
+				if b, ok := pdu.Value.([]byte); ok {
+					val_string = string(b)
+				}
+			} else if pdu.Type == gosnmp.Gauge32 && pdu.Value != nil {
 				log.Println("pduType: Gauge32")
-				val_uint64 = uint64(pdu.Value.(uint))
+				if v, ok := pdu.Value.(uint); ok {
+					val_uint64 = uint64(v)
+				}
 				log.Println("Gauge32: ", val_uint64, "")
 			} else {
 				val_string = ""
