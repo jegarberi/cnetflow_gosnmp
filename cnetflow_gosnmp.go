@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/gosnmp/gosnmp"
-	_ "github.com/lib/pq" // pgx database/sql driver
 
 	"time"
 )
@@ -113,7 +113,7 @@ func saveInterfaceMetrics(i *Interface) (bool, error) {
 	var _ sql.Result
 	log.Println("Saving interface: ", i)
 
-	_, err = config.db.Exec("INSERT into interface_metrics  (exporter,snmp_index,octets_in,octets_out) VALUES ($1,$2,$3,$4)", i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets)
+	_, err = config.db.Exec("INSERT into interface_metrics  (exporter,snmp_index,octets_in,octets_out,timestamp) VALUES (?,?,?,?,?)", i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets, time.Now())
 
 	if err != nil {
 		return false, err
@@ -127,7 +127,7 @@ func saveInterfaceData(i *Interface) (bool, error) {
 	log.Println("Saving interface: ", i)
 	log.Println("speed: ", i.Speed)
 
-	_, err = config.db.Exec("UPDATE interfaces SET description = $1, alias = $2,speed = $3,enabled = $4,name=$5 WHERE id = $6;", i.Description, i.Alias, i.Speed, i.Enabled, i.Name, i.ID)
+	_, err = config.db.Exec("ALTER TABLE interfaces UPDATE description = ?, alias = ?, speed = ?, enabled = ?, name = ? WHERE id = ?;", i.Description, i.Alias, i.Speed, i.Enabled, i.Name, i.ID)
 
 	if err != nil {
 		return false, err
@@ -141,9 +141,9 @@ func saveSNMPCredentials(e Exporter, idx int, name string) (bool, error) {
 	var err error
 	var _ sql.Result
 	if cred.Version == 1 || cred.Version == 2 {
-		_, err = config.db.Exec("UPDATE exporters SET snmp_version = $1, snmp_community = $2, name = $3 WHERE id = $4;", cred.Version, cred.Community, name, exporterId)
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = ?, snmp_community = ?, name = ? WHERE id = ?;", cred.Version, cred.Community, name, exporterId)
 	} else if cred.Version == 3 {
-		_, err = config.db.Exec("update exporters set snmp_version = 3, snmpv3_username = $1, snmpv3_level = $2, snmpv3_auth_proto = $3, snmpv3_auth_pass = $4,snmpv3_priv_proto = $5 , snmpv3_priv_pass = $6, name = $7 where id = $8",
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = 3, snmpv3_username = ?, snmpv3_level = ?, snmpv3_auth_proto = ?, snmpv3_auth_pass = ?, snmpv3_priv_proto = ? , snmpv3_priv_pass = ?, name = ? WHERE id = ?",
 			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, name, exporterId)
 	} else {
 		err = fmt.Errorf("invalid version")
@@ -698,7 +698,7 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 }
 
 func getInterfaces(e Exporter) ([]Interface, error) {
-	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces where exporter = $1;", e.ID)
+	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces where exporter = ?;", e.ID)
 	if err != nil {
 		log.Println("Error querying database: ", err)
 		return nil, err
@@ -938,10 +938,12 @@ func main() {
 	var err error
 	config.chExit = make(chan bool)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	connString := os.Getenv("PG_CONN_STRING")
-	connString = fmt.Sprintf("%s?sslmode=disable", connString)
+	connString := os.Getenv("CH_CONN_STRING")
+	if connString == "" {
+		connString = "clickhouse://127.0.0.1:9000/default"
+	}
 	log.Println("Connecting to database: ", connString)
-	config.db, err = sql.Open("postgres", connString)
+	config.db, err = sql.Open("clickhouse", connString)
 	if err != nil {
 		panic(err)
 	}
