@@ -997,10 +997,12 @@ func main() {
 	for _, e := range config.exporters {
 		config.wg.Add(1)
 		exporter := e
-		_, err := detectSNMPCredentials(exporter, &config.wg)
-		if err != nil {
-			log.Println("Error detecting SNMP credentials: ", err)
-		}
+		go func(ex Exporter) {
+			_, err := detectSNMPCredentials(ex, &config.wg)
+			if err != nil {
+				log.Println("Error detecting SNMP credentials for ", ex.IPInet, ": ", err)
+			}
+		}(exporter)
 	}
 	config.wg.Wait()
 	config.exporters, _ = getExporters()
