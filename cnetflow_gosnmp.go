@@ -156,7 +156,8 @@ func saveSNMPCredentials(e Exporter, idx int, name string) (bool, error) {
 
 }
 
-func detectSNMPCredentials(e Exporter) (int, error) {
+func detectSNMPCredentials(e Exporter, wg *sync.WaitGroup) (int, error) {
+	defer wg.Done()
 	var g *gosnmp.GoSNMP
 	var name string
 	var oids []string
@@ -892,7 +893,8 @@ func timer() {
 				}
 				for idx, e := range config.exporters {
 					exporter := e
-					detectSNMPCredentials(config.exporters[idx])
+					config.wg.Add(1)
+					detectSNMPCredentials(config.exporters[idx], &config.wg)
 					for _, i := range exporter.Interfaces {
 						if i.Enabled {
 							config.wg.Add(1)
@@ -962,12 +964,14 @@ func main() {
 	}
 	config.exporters, err = getExporters()
 	for _, e := range config.exporters {
+		config.wg.Add(1)
 		exporter := e
-		_, err := detectSNMPCredentials(exporter)
+		_, err := detectSNMPCredentials(exporter, &config.wg)
 		if err != nil {
 			log.Println("Error detecting SNMP credentials: ", err)
 		}
 	}
+	config.wg.Wait()
 	config.exporters, _ = getExporters()
 	for idx, e := range config.exporters {
 		config.exporters[idx].Interfaces, _ = getInterfaces(e)
