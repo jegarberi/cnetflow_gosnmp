@@ -94,7 +94,7 @@ const (
 	ifInOctets        = ".1.3.6.1.2.1.2.2.1.10."
 	ifHCInOctets      = ".1.3.6.1.2.1.31.1.1.1.6."
 	ifOutOctets       = ".1.3.6.1.2.1.2.2.1.16."
-	ifHCOutOctets     = "1.3.6.1.2.1.31.1.1.1.10."
+	ifHCOutOctets     = ".1.3.6.1.2.1.31.1.1.1.10."
 	ifInUcastPkts     = ".1.3.6.1.2.1.2.2.1.11."
 	ifOutUcastPkts    = ".1.3.6.1.2.1.2.2.1.17."
 	ifInNUcastPkts    = ".1.3.6.1.2.1.2.2.1.12."
@@ -111,11 +111,12 @@ var config Config
 func saveInterfaceMetrics(i *Interface) (bool, error) {
 	var err error
 	var _ sql.Result
-	log.Println("Saving interface: ", i)
+	log.Printf("Saving interface metrics: %+v\n", i)
 
 	_, err = config.db.Exec("INSERT into interface_metrics  (exporter,snmp_index,octets_in,octets_out,timestamp) VALUES (?,?,?,?,?)", i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets, time.Now())
 
 	if err != nil {
+		log.Println("Error inserting interface metrics: ", err)
 		return false, err
 	}
 	return true, nil
@@ -124,12 +125,13 @@ func saveInterfaceMetrics(i *Interface) (bool, error) {
 func saveInterfaceData(i *Interface) (bool, error) {
 	var err error
 	var _ sql.Result
-	log.Println("Saving interface: ", i)
+	log.Printf("Saving interface data: %+v\n", i)
 	log.Println("speed: ", i.Speed)
 
 	_, err = config.db.Exec("ALTER TABLE interfaces UPDATE description = ?, alias = ?, speed = ?, enabled = ?, name = ? WHERE id = ?;", i.Description, i.Alias, i.Speed, i.Enabled, i.Name, i.ID)
 
 	if err != nil {
+		log.Println("Error updating interface data: ", err)
 		return false, err
 	}
 	return true, nil
@@ -595,12 +597,18 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 				if b, ok := pdu.Value.([]byte); ok {
 					val_string = string(b)
 				}
-			} else if pdu.Type == gosnmp.Gauge32 && pdu.Value != nil {
-				log.Println("pduType: Gauge32")
+			} else if (pdu.Type == gosnmp.Gauge32 || pdu.Type == gosnmp.Counter32) && pdu.Value != nil {
+				log.Println("pduType: Gauge32/Counter32")
 				if v, ok := pdu.Value.(uint); ok {
 					val_uint64 = uint64(v)
 				}
-				log.Println("Gauge32: ", val_uint64, "")
+				log.Println("Value: ", val_uint64, "")
+			} else if pdu.Type == gosnmp.Counter64 && pdu.Value != nil {
+				log.Println("pduType: Counter64")
+				if v, ok := pdu.Value.(uint64); ok {
+					val_uint64 = v
+				}
+				log.Println("Value: ", val_uint64, "")
 			} else {
 				val_string = ""
 				val_uint64 = 0
@@ -610,9 +618,9 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			case 0:
 				i.Name = val_string
 			case 1:
-				i.Alias = val_string
-			case 2:
 				i.Description = val_string
+			case 2:
+				i.Alias = val_string
 			case 3:
 				log.Println("Speed: ", val_uint64)
 				i.Speed = val_uint64
@@ -693,12 +701,18 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 				if b, ok := pdu.Value.([]byte); ok {
 					val_string = string(b)
 				}
-			} else if pdu.Type == gosnmp.Gauge32 && pdu.Value != nil {
-				log.Println("pduType: Gauge32")
+			} else if (pdu.Type == gosnmp.Gauge32 || pdu.Type == gosnmp.Counter32) && pdu.Value != nil {
+				log.Println("pduType: Gauge32/Counter32")
 				if v, ok := pdu.Value.(uint); ok {
 					val_uint64 = uint64(v)
 				}
-				log.Println("Gauge32: ", val_uint64, "")
+				log.Println("Value: ", val_uint64, "")
+			} else if pdu.Type == gosnmp.Counter64 && pdu.Value != nil {
+				log.Println("pduType: Counter64")
+				if v, ok := pdu.Value.(uint64); ok {
+					val_uint64 = v
+				}
+				log.Println("Value: ", val_uint64, "")
 			} else {
 				val_string = ""
 				val_uint64 = 0
@@ -708,9 +722,9 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			case 0:
 				i.Name = val_string
 			case 1:
-				i.Alias = val_string
-			case 2:
 				i.Description = val_string
+			case 2:
+				i.Alias = val_string
 			case 3:
 				log.Println("Speed: ", val_uint64)
 				i.Speed = val_uint64
@@ -947,8 +961,12 @@ func timer() {
 						log.Println(i)
 						if i.Enabled {
 							config.wg.Add(1)
-							log.Println("Polling interface: ", i)
-							go pollInterfaceOctets(&e, &i, &config.wg)
+							log.Printf("Polling interface: %s (%d) on exporter %s\n", i.Description, i.SNMPIndex, e.IPInet)
+							interfac := i
+							exporter := e
+							go func(ex Exporter, interf Interface) {
+								pollInterfaceOctets(&ex, &interf, &config.wg)
+							}(exporter, interfac)
 						}
 					}
 				}
@@ -1015,10 +1033,15 @@ func main() {
 		for _, i := range exporter.Interfaces {
 			config.wg.Add(1)
 			interfac := i
-			log.Println("Starting goroutine for exporter: ", exporter, " interface: ", interfac)
-			go pollInterfaceData(&exporter, &interfac, &config.wg)
+			log.Printf("Starting goroutine for exporter: %s (%d) interface: %s (%d)\n", exporter.IPInet, exporter.ID, interfac.Description, interfac.SNMPIndex)
+			go func(ex Exporter, interf Interface) {
+				pollInterfaceData(&ex, &interf, &config.wg)
+			}(exporter, interfac)
+
 			config.wg.Add(1)
-			go pollInterfaceOctets(&exporter, &interfac, &config.wg)
+			go func(ex Exporter, interf Interface) {
+				pollInterfaceOctets(&ex, &interf, &config.wg)
+			}(exporter, interfac)
 		}
 	}
 	log.Println("Waiting for goroutines to finish...")
