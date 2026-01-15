@@ -28,10 +28,10 @@ type ExporterSNMPData struct {
 	SysServices string `json:"sysServices"`
 }
 type Interface struct {
-	ID             int64     `db:"id" json:"id"`
+	ID             uint64    `db:"id" json:"id"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	Exporter       int64     `db:"exporter" json:"exporter"`
-	SNMPIndex      int64     `db:"snmp_index" json:"snmp_index"`
+	Exporter       uint64    `db:"exporter" json:"exporter"`
+	SNMPIndex      uint64    `db:"snmp_index" json:"snmp_index"`
 	Description    string    `db:"description" json:"description,omitempty"`
 	Alias          string    `db:"alias" json:"alias,omitempty"`
 	Speed          uint64    `db:"speed" json:"speed,omitempty"`
@@ -44,12 +44,12 @@ type Interface struct {
 }
 
 type Exporter struct {
-	ID              int64       `db:"id" json:"id"`
+	ID              uint64      `db:"id" json:"id"`
 	CreatedAt       time.Time   `db:"created_at" json:"created_at"`
-	IPBin           int32       `db:"ip_bin" json:"ip_bin"`
+	IPBin           uint32      `db:"ip_bin" json:"ip_bin"`
 	IPInet          string      `db:"ip_inet" json:"ip_inet"`
 	Name            string      `db:"name" json:"name"`
-	SNMPVersion     int16       `db:"snmp_version" json:"snmp_version,omitempty"`
+	SNMPVersion     uint16      `db:"snmp_version" json:"snmp_version,omitempty"`
 	SNMPCommunity   string      `db:"snmp_community" json:"snmp_community,omitempty"`
 	SNMPv3Username  string      `db:"snmpv3_username" json:"snmpv3_username,omitempty"`
 	SNMPv3Level     string      `db:"snmpv3_level" json:"snmpv3_level,omitempty"`
@@ -803,7 +803,7 @@ func getExporters() ([]Exporter, error) {
 			e.SNMPv3Username = sqlsnmpuser.String
 		}
 		if sqlsnmpver.Valid {
-			e.SNMPVersion = int16(sqlsnmpver.Int64)
+			e.SNMPVersion = uint16(sqlsnmpver.Int64)
 		}
 		if sqlsnmplevel.Valid {
 			e.SNMPv3Level = sqlsnmplevel.String
