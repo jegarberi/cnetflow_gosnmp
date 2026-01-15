@@ -141,10 +141,10 @@ func saveSNMPCredentials(e Exporter, idx int, name string) (bool, error) {
 	var err error
 	var _ sql.Result
 	if cred.Version == 1 || cred.Version == 2 {
-		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = ?, snmp_community = ?, name = ? WHERE id = ?;", cred.Version, cred.Community, name, exporterId)
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = ?, snmp_community = ? WHERE id = ?;", cred.Version, cred.Community, exporterId)
 	} else if cred.Version == 3 {
-		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = 3, snmpv3_username = ?, snmpv3_level = ?, snmpv3_auth_proto = ?, snmpv3_auth_pass = ?, snmpv3_priv_proto = ? , snmpv3_priv_pass = ?, name = ? WHERE id = ?",
-			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, name, exporterId)
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = 3, snmpv3_username = ?, snmpv3_level = ?, snmpv3_auth_proto = ?, snmpv3_auth_pass = ?, snmpv3_priv_proto = ? , snmpv3_priv_pass = ? WHERE id = ?",
+			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, exporterId)
 	} else {
 		err = fmt.Errorf("invalid version")
 
@@ -161,7 +161,7 @@ func detectSNMPCredentials(e Exporter, wg *sync.WaitGroup) (int, error) {
 	var g *gosnmp.GoSNMP
 	var name string
 	var oids []string
-	oids = append(oids, SysDescr)
+	oids = append(oids, ifDescr)
 	for idx, cred := range config.snmp {
 		name = ""
 		log.Printf("Exporter: %s SNMP credential %d: %v\n", e.IPInet, idx, cred)
