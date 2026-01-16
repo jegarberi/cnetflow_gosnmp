@@ -931,28 +931,36 @@ func timer() {
 		case <-ticker.C:
 			timer += 1
 			log.Println("tick...", timer, " minutes elapsed")
-			if timer%60 == 0 {
-				config.exporters, _ = getExporters()
-				for idx, e := range config.exporters {
-					config.exporters[idx].Interfaces, _ = getInterfaces(e)
-				}
-				for idx, e := range config.exporters {
-					exporter := e
-					config.wg.Add(1)
-					detectSNMPCredentials(config.exporters[idx], &config.wg)
-					for _, i := range exporter.Interfaces {
-						if i.Enabled {
-							config.wg.Add(1)
-							log.Println("Polling interface: ", i)
-							go pollInterfaceData(&e, &i, &config.wg)
-						}
-					}
 
-				}
-				log.Println("Waiting for all pollInterfaceData goroutines to finish...")
-				config.wg.Wait()
-				log.Println("All done!!")
-				log.Println(config)
+			if timer%60 == 0 {
+				go func() {
+					config.exporters, _ = getExporters()
+					for idx, e := range config.exporters {
+						config.exporters[idx].Interfaces, _ = getInterfaces(e)
+					}
+					for idx, e := range config.exporters {
+						exporter := e
+						config.wg.Add(1)
+						go func() {
+							_, err := detectSNMPCredentials(config.exporters[idx], &config.wg)
+							if err != nil {
+								log.Println("Error detecting SNMP credentials: ", err)
+							}
+						}()
+						for _, i := range exporter.Interfaces {
+							if i.Enabled {
+								config.wg.Add(1)
+								log.Println("Polling interface: ", i)
+								go pollInterfaceData(&e, &i, &config.wg)
+							}
+						}
+
+					}
+					log.Println("Waiting for all pollInterfaceData goroutines to finish...")
+					config.wg.Wait()
+					log.Println("All done!!")
+					log.Println(config)
+				}()
 			}
 			if timer%1 == 0 {
 				for _, e := range config.exporters {
@@ -1012,17 +1020,20 @@ func main() {
 		panic(err)
 	}
 	config.exporters, err = getExporters()
-	for _, e := range config.exporters {
-		config.wg.Add(1)
-		exporter := e
-		go func(ex Exporter) {
-			_, err := detectSNMPCredentials(ex, &config.wg)
-			if err != nil {
-				log.Println("Error detecting SNMP credentials for ", ex.IPInet, ": ", err)
-			}
-		}(exporter)
-	}
-	config.wg.Wait()
+	/*
+		for _, e := range config.exporters {
+			config.wg.Add(1)
+			exporter := e
+			go func(ex Exporter) {
+				_, err := detectSNMPCredentials(ex, &config.wg)
+				if err != nil {
+					log.Println("Error detecting SNMP credentials for ", ex.IPInet, ": ", err)
+				}
+			}(exporter)
+		}
+		config.wg.Wait()
+
+	*/
 	config.exporters, _ = getExporters()
 	for idx, e := range config.exporters {
 		config.exporters[idx].Interfaces, _ = getInterfaces(e)
