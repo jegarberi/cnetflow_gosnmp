@@ -744,7 +744,7 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 }
 
 func getInterfaces(e Exporter) ([]Interface, error) {
-	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces where exporter = ?;", e.ID)
+	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled   FROM interfaces where exporter = ?;", e.IPBin)
 	if err != nil {
 		log.Println("Error querying database: ", err)
 		return nil, err
