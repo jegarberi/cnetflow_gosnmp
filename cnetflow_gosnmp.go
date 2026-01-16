@@ -128,7 +128,7 @@ func saveInterfaceData(i *Interface) (bool, error) {
 	log.Printf("Saving interface data: %+v\n", i)
 	log.Println("speed: ", i.Speed)
 
-	_, err = config.db.Exec("UPDATE interfaces SET description = ?, alias = ?, speed = ?, enabled = ?, name = ? WHERE id = ?;", i.Description, i.Alias, i.Speed, i.Enabled, i.Name, i.ID)
+	_, err = config.db.Exec("ALTER TABLE interfaces UPDATE description = ?, alias = ?, speed = ?, enabled = ?, name = ? WHERE id = ?;", i.Description, i.Alias, i.Speed, i.Enabled, i.Name, i.ID)
 
 	if err != nil {
 		log.Println("Error updating interface data: ", err)
@@ -143,9 +143,9 @@ func saveSNMPCredentials(e Exporter, idx int, name string) (bool, error) {
 	var err error
 	var _ sql.Result
 	if cred.Version == 1 || cred.Version == 2 {
-		_, err = config.db.Exec("UPDATE exporters SET snmp_version = ?, snmp_community = ? WHERE id = ?;", cred.Version, cred.Community, exporterId)
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = ?, snmp_community = ? WHERE id = ?;", cred.Version, cred.Community, exporterId)
 	} else if cred.Version == 3 {
-		_, err = config.db.Exec("UPDATE  exporters SET snmp_version = 3, snmpv3_username = ?, snmpv3_level = ?, snmpv3_auth_proto = ?, snmpv3_auth_pass = ?, snmpv3_priv_proto = ? , snmpv3_priv_pass = ? WHERE id = ?",
+		_, err = config.db.Exec("ALTER TABLE exporters UPDATE snmp_version = 3, snmpv3_username = ?, snmpv3_level = ?, snmpv3_auth_proto = ?, snmpv3_auth_pass = ?, snmpv3_priv_proto = ? , snmpv3_priv_pass = ? WHERE id = ?",
 			cred.User, cred.SecurityLevel, cred.AuthProtocol, cred.AuthPassphrase, cred.PrivProtocol, cred.PrivPassphrase, exporterId)
 	} else {
 		err = fmt.Errorf("invalid version")
