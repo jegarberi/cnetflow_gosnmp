@@ -1037,23 +1037,28 @@ func timer() {
 				}()
 			}
 			if timer%1 == 0 {
-				for idx := range config.exporters {
-					log.Println(config.exporters[idx])
-					for jdx := range config.exporters[idx].Interfaces {
-						log.Println(config.exporters[idx].Interfaces[jdx])
-						if config.exporters[idx].Interfaces[jdx].Enabled {
-							config.wg.Add(1)
+				var configTimerPollInterfaces Config
+				configTimerPollInterfaces.exporters, _ = getExporters()
+				for idx, e := range configTimerPollInterfaces.exporters {
+					configTimerPollInterfaces.exporters[idx].Interfaces, _ = getInterfaces(e)
+				}
+				for idx := range configTimerPollInterfaces.exporters {
+					log.Println(configTimerPollInterfaces.exporters[idx])
+					for jdx := range configTimerPollInterfaces.exporters[idx].Interfaces {
+						log.Println(configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
+						if configTimerPollInterfaces.exporters[idx].Interfaces[jdx].Enabled {
+							configTimerPollInterfaces.wg.Add(1)
 							log.Printf("Polling interface: %s (%d) on exporter %s\n", config.exporters[idx].Interfaces[jdx].Description, config.exporters[idx].Interfaces[jdx].SNMPIndex, config.exporters[idx].IPInet)
 							go func(ex *Exporter, interf *Interface) {
-								pollInterfaceOctets(ex, interf, &config.wg)
-							}(&config.exporters[idx], &config.exporters[idx].Interfaces[jdx])
+								pollInterfaceOctets(ex, interf, &configTimerPollInterfaces.wg)
+							}(&configTimerPollInterfaces.exporters[idx], &configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
 						}
 					}
 				}
 				log.Println("Waiting for all pollInterfaceData goroutines to finish...")
-				config.wg.Wait()
+				configTimerPollInterfaces.wg.Wait()
 				log.Println("All done!!")
-				log.Println(config)
+				log.Println(configTimerPollInterfaces)
 			}
 
 		case <-sigCh:
