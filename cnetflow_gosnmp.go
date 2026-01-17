@@ -1021,11 +1021,11 @@ func timer() {
 								log.Println("Error detecting SNMP credentials: ", err)
 							}
 						}()
-						for _, i := range exporter.Interfaces {
-							if i.Enabled {
+						for idx := range exporter.Interfaces {
+							if exporter.Interfaces[idx].Enabled {
 								config.wg.Add(1)
-								log.Println("Polling interface: ", i)
-								go pollInterfaceData(&e, &i, &config.wg)
+								log.Println("Polling interface: ", exporter.Interfaces[idx])
+								go pollInterfaceData(&e, &exporter.Interfaces[idx], &config.wg)
 							}
 						}
 
@@ -1037,18 +1037,16 @@ func timer() {
 				}()
 			}
 			if timer%1 == 0 {
-				for _, e := range config.exporters {
-					log.Println(e)
-					for _, i := range e.Interfaces {
-						log.Println(i)
-						if i.Enabled {
+				for idx := range config.exporters {
+					log.Println(config.exporters[idx])
+					for jdx := range config.exporters[idx].Interfaces {
+						log.Println(config.exporters[idx].Interfaces[jdx])
+						if config.exporters[idx].Interfaces[jdx].Enabled {
 							config.wg.Add(1)
-							log.Printf("Polling interface: %s (%d) on exporter %s\n", i.Description, i.SNMPIndex, e.IPInet)
-							interfac := i
-							exporter := e
-							go func(ex Exporter, interf Interface) {
-								pollInterfaceOctets(&ex, &interf, &config.wg)
-							}(exporter, interfac)
+							log.Printf("Polling interface: %s (%d) on exporter %s\n", config.exporters[idx].Interfaces[jdx].Description, config.exporters[idx].Interfaces[jdx].SNMPIndex, config.exporters[idx].IPInet)
+							go func(ex *Exporter, interf *Interface) {
+								pollInterfaceOctets(ex, interf, &config.wg)
+							}(&config.exporters[idx], &config.exporters[idx].Interfaces[jdx])
 						}
 					}
 				}
@@ -1113,20 +1111,18 @@ func main() {
 		config.exporters[idx].Interfaces, _ = getInterfaces(e)
 	}
 
-	for _, e := range config.exporters {
-		exporter := e
-		for _, i := range exporter.Interfaces {
+	for idx := range config.exporters {
+		for jdx := range config.exporters[idx].Interfaces {
 			config.wg.Add(1)
-			interfac := i
-			log.Printf("Starting goroutine for exporter: %s (%d) interface: %s (%d)\n", exporter.IPInet, exporter.ID, interfac.Description, interfac.SNMPIndex)
-			go func(ex Exporter, interf Interface) {
-				pollInterfaceData(&ex, &interf, &config.wg)
-			}(exporter, interfac)
+			log.Printf("Starting goroutine for exporter: %s (%d) interface: %s (%d)\n", config.exporters[idx].IPInet, config.exporters[idx].ID, config.exporters[idx].Interfaces[jdx].Description, config.exporters[idx].Interfaces[jdx].SNMPIndex)
+			go func(ex *Exporter, interf *Interface) {
+				pollInterfaceData(ex, interf, &config.wg)
+			}(&config.exporters[idx], &config.exporters[idx].Interfaces[jdx])
 
 			config.wg.Add(1)
-			go func(ex Exporter, interf Interface) {
-				pollInterfaceOctets(&ex, &interf, &config.wg)
-			}(exporter, interfac)
+			go func(ex *Exporter, interf *Interface) {
+				pollInterfaceOctets(ex, interf, &config.wg)
+			}(&config.exporters[idx], &config.exporters[idx].Interfaces[jdx])
 		}
 	}
 	log.Println("Waiting for goroutines to finish...")
