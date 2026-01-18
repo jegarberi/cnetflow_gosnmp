@@ -28,24 +28,42 @@ type ExporterSNMPData struct {
 	SysServices string `json:"sysServices"`
 }
 type Interface struct {
-	ID             uint64    `db:"id" json:"id"`
-	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	Exporter       uint64    `db:"exporter" json:"exporter"`
-	SNMPIndex      uint64    `db:"snmp_index" json:"snmp_index"`
-	Description    string    `db:"description" json:"description,omitempty"`
-	Alias          string    `db:"alias" json:"alias,omitempty"`
-	Speed          uint64    `db:"speed" json:"speed,omitempty"`
-	Enabled        bool      `db:"enabled" json:"enabled,omitempty"`
-	Name           string    `db:"name" json:"name,omitempty"`
-	Polled         uint64    `db:"polled" json:"polled,omitempty"`
-	InOctets       uint64    `db:"in_octets" json:"in_octets,omitempty"`
-	OutOctets      uint64    `db:"out_octets" json:"out_octets,omitempty"`
-	LastInOctets   uint64    `db:"last_in_octets" json:"last_in_octets,omitempty"`
-	LastOutOctets  uint64    `db:"last_out_octets" json:"last_out_octets,omitempty"`
-	LastPolledAt   time.Time `db:"last_polled_at" json:"last_polled_at,omitempty"`
-	InOctetsRate   float64   `db:"in_octets_rate" json:"in_octets_rate,omitempty"`
-	OutOctetsRate  float64   `db:"out_octets_rate" json:"out_octets_rate,omitempty"`
-	ExporterStruct Exporter
+	ID              uint64    `db:"id" json:"id"`
+	CreatedAt       time.Time `db:"created_at" json:"created_at"`
+	Exporter        uint64    `db:"exporter" json:"exporter"`
+	SNMPIndex       uint64    `db:"snmp_index" json:"snmp_index"`
+	Description     string    `db:"description" json:"description,omitempty"`
+	Alias           string    `db:"alias" json:"alias,omitempty"`
+	Speed           uint64    `db:"speed" json:"speed,omitempty"`
+	Enabled         bool      `db:"enabled" json:"enabled,omitempty"`
+	Name            string    `db:"name" json:"name,omitempty"`
+	Polled          uint64    `db:"polled" json:"polled,omitempty"`
+	InOctets        uint64    `db:"in_octets" json:"in_octets,omitempty"`
+	OutOctets       uint64    `db:"out_octets" json:"out_octets,omitempty"`
+	LastInOctets    uint64    `db:"last_in_octets" json:"last_in_octets,omitempty"`
+	LastOutOctets   uint64    `db:"last_out_octets" json:"last_out_octets,omitempty"`
+	InPackets       uint64    `db:"in_packets" json:"in_packets,omitempty"`
+	OutPackets      uint64    `db:"out_packets" json:"out_packets,omitempty"`
+	LastInPackets   uint64    `db:"last_in_packets" json:"last_in_packets,omitempty"`
+	LastOutPackets  uint64    `db:"last_out_packets" json:"last_out_packets,omitempty"`
+	InErrors        uint64    `db:"in_errors" json:"in_errors,omitempty"`
+	OutErrors       uint64    `db:"out_errors" json:"out_errors,omitempty"`
+	LastInErrors    uint64    `db:"last_in_errors" json:"last_in_errors,omitempty"`
+	LastOutErrors   uint64    `db:"last_out_errors" json:"last_out_errors,omitempty"`
+	InDiscards      uint64    `db:"in_discards" json:"in_discards,omitempty"`
+	OutDiscards     uint64    `db:"out_discards" json:"out_discards,omitempty"`
+	LastInDiscards  uint64    `db:"last_in_discards" json:"last_in_discards,omitempty"`
+	LastOutDiscards uint64    `db:"last_out_discards" json:"last_out_discards,omitempty"`
+	LastPolledAt    time.Time `db:"last_polled_at" json:"last_polled_at,omitempty"`
+	InOctetsRate    float64   `db:"in_octets_rate" json:"in_octets_rate,omitempty"`
+	OutOctetsRate   float64   `db:"out_octets_rate" json:"out_octets_rate,omitempty"`
+	InPacketsRate   float64   `db:"in_packets_rate" json:"in_packets_rate,omitempty"`
+	OutPacketsRate  float64   `db:"out_packets_rate" json:"out_packets_rate,omitempty"`
+	InErrorsRate    float64   `db:"in_errors_rate" json:"in_errors_rate,omitempty"`
+	OutErrorsRate   float64   `db:"out_errors_rate" json:"out_errors_rate,omitempty"`
+	InDiscardsRate  float64   `db:"in_discards_rate" json:"in_discards_rate,omitempty"`
+	OutDiscardsRate float64   `db:"out_discards_rate" json:"out_discards_rate,omitempty"`
+	ExporterStruct  Exporter
 }
 
 type Exporter struct {
@@ -118,8 +136,11 @@ func saveInterfaceMetrics(i *Interface) (bool, error) {
 	var _ sql.Result
 	log.Printf("Saving interface metrics: %+v\n", i)
 
-	_, err = config.db.Exec("INSERT into interface_metrics  (exporter,snmp_index,octets_in,octets_out,octets_in_rate,octets_out_rate) VALUES (?,?,?,?,?,?)",
-		i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets, i.InOctetsRate, i.OutOctetsRate)
+	_, err = config.db.Exec("INSERT into interface_metrics (exporter,snmp_index,octets_in,octets_out,octets_in_rate,octets_out_rate,packets_in,packets_out,packets_in_rate,packets_out_rate,errors_in,errors_out,errors_in_rate,errors_out_rate,discards_in,discards_out,discards_in_rate,discards_out_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		i.Exporter, i.SNMPIndex, i.InOctets, i.OutOctets, i.InOctetsRate, i.OutOctetsRate,
+		i.InPackets, i.OutPackets, i.InPacketsRate, i.OutPacketsRate,
+		i.InErrors, i.OutErrors, i.InErrorsRate, i.OutErrorsRate,
+		i.InDiscards, i.OutDiscards, i.InDiscardsRate, i.OutDiscardsRate)
 
 	if err != nil {
 		log.Println("Error inserting interface metrics: ", err)
@@ -326,6 +347,14 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 	var ifoutoctets uint64 = 0
 	var ifhcinoctets uint64 = 0
 	var ifhcoutoctets uint64 = 0
+	var ifinucastpkts uint64 = 0
+	var ifoutucastpkts uint64 = 0
+	var ifinnucastpkts uint64 = 0
+	var ifoutnucastpkts uint64 = 0
+	var ifinerrors uint64 = 0
+	var ifouterrors uint64 = 0
+	var ifindiscards uint64 = 0
+	var ifoutdiscards uint64 = 0
 
 	currentTime := time.Now()
 
@@ -333,6 +362,14 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 	base_oids = append(base_oids, ifOutOctets)
 	base_oids = append(base_oids, ifHCInOctets)
 	base_oids = append(base_oids, ifHCOutOctets)
+	base_oids = append(base_oids, ifInUcastPkts)
+	base_oids = append(base_oids, ifOutUcastPkts)
+	base_oids = append(base_oids, ifInNUcastPkts)
+	base_oids = append(base_oids, ifOutNUcastPkts)
+	base_oids = append(base_oids, ifInErrors)
+	base_oids = append(base_oids, ifOutErrors)
+	base_oids = append(base_oids, ifInDiscards)
+	base_oids = append(base_oids, ifOutDiscards)
 
 	for _, base_oid := range base_oids {
 		oid := base_oid + fmt.Sprintf("%d", i.SNMPIndex)
@@ -412,6 +449,22 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 				ifhcinoctets = val_uint64
 			case 3:
 				ifhcoutoctets = val_uint64
+			case 4:
+				ifinucastpkts = val_uint64
+			case 5:
+				ifoutucastpkts = val_uint64
+			case 6:
+				ifinnucastpkts = val_uint64
+			case 7:
+				ifoutnucastpkts = val_uint64
+			case 8:
+				ifinerrors = val_uint64
+			case 9:
+				ifouterrors = val_uint64
+			case 10:
+				ifindiscards = val_uint64
+			case 11:
+				ifoutdiscards = val_uint64
 			}
 
 		}
@@ -513,6 +566,22 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 				ifhcinoctets = val_uint64
 			case 3:
 				ifhcoutoctets = val_uint64
+			case 4:
+				ifinucastpkts = val_uint64
+			case 5:
+				ifoutucastpkts = val_uint64
+			case 6:
+				ifinnucastpkts = val_uint64
+			case 7:
+				ifoutnucastpkts = val_uint64
+			case 8:
+				ifinerrors = val_uint64
+			case 9:
+				ifouterrors = val_uint64
+			case 10:
+				ifindiscards = val_uint64
+			case 11:
+				ifoutdiscards = val_uint64
 			}
 
 		}
@@ -529,6 +598,14 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 	} else {
 		i.OutOctets = ifoutoctets
 	}
+
+	// Set packet counters (sum of unicast and non-unicast)
+	i.InPackets = ifinucastpkts + ifinnucastpkts
+	i.OutPackets = ifoutucastpkts + ifoutnucastpkts
+	i.InErrors = ifinerrors
+	i.OutErrors = ifouterrors
+	i.InDiscards = ifindiscards
+	i.OutDiscards = ifoutdiscards
 
 	// Calculate rates with rollover detection
 	if !i.LastPolledAt.IsZero() {
@@ -568,13 +645,80 @@ func pollInterfaceOctets(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 			}
 			i.OutOctetsRate = float64(outDiff) / timeDiff
 
-			log.Printf("Interface %d rates: In=%.2f octets/s, Out=%.2f octets/s", i.SNMPIndex, i.InOctetsRate, i.OutOctetsRate)
+			// Handle InPackets
+			var inPktDiff uint64
+			if i.InPackets < i.LastInPackets {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				inPktDiff = (maxCounter - i.LastInPackets) + i.InPackets + 1
+				log.Printf("InPackets rollover detected: last=%d, current=%d, diff=%d", i.LastInPackets, i.InPackets, inPktDiff)
+			} else {
+				inPktDiff = i.InPackets - i.LastInPackets
+			}
+			i.InPacketsRate = float64(inPktDiff) / timeDiff
+
+			// Handle OutPackets
+			var outPktDiff uint64
+			if i.OutPackets < i.LastOutPackets {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				outPktDiff = (maxCounter - i.LastOutPackets) + i.OutPackets + 1
+				log.Printf("OutPackets rollover detected: last=%d, current=%d, diff=%d", i.LastOutPackets, i.OutPackets, outPktDiff)
+			} else {
+				outPktDiff = i.OutPackets - i.LastOutPackets
+			}
+			i.OutPacketsRate = float64(outPktDiff) / timeDiff
+
+			// Handle InErrors
+			var inErrDiff uint64
+			if i.InErrors < i.LastInErrors {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				inErrDiff = (maxCounter - i.LastInErrors) + i.InErrors + 1
+				log.Printf("InErrors rollover detected: last=%d, current=%d, diff=%d", i.LastInErrors, i.InErrors, inErrDiff)
+			} else {
+				inErrDiff = i.InErrors - i.LastInErrors
+			}
+			i.InErrorsRate = float64(inErrDiff) / timeDiff
+
+			// Handle OutErrors
+			var outErrDiff uint64
+			if i.OutErrors < i.LastOutErrors {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				outErrDiff = (maxCounter - i.LastOutErrors) + i.OutErrors + 1
+				log.Printf("OutErrors rollover detected: last=%d, current=%d, diff=%d", i.LastOutErrors, i.OutErrors, outErrDiff)
+			} else {
+				outErrDiff = i.OutErrors - i.LastOutErrors
+			}
+			i.OutErrorsRate = float64(outErrDiff) / timeDiff
+
+			// Handle InDiscards
+			var inDiscDiff uint64
+			if i.InDiscards < i.LastInDiscards {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				inDiscDiff = (maxCounter - i.LastInDiscards) + i.InDiscards + 1
+				log.Printf("InDiscards rollover detected: last=%d, current=%d, diff=%d", i.LastInDiscards, i.InDiscards, inDiscDiff)
+			} else {
+				inDiscDiff = i.InDiscards - i.LastInDiscards
+			}
+			i.InDiscardsRate = float64(inDiscDiff) / timeDiff
+
+			// Handle OutDiscards
+			var outDiscDiff uint64
+			if i.OutDiscards < i.LastOutDiscards {
+				maxCounter := uint64(^uint32(0)) // Counter32
+				outDiscDiff = (maxCounter - i.LastOutDiscards) + i.OutDiscards + 1
+				log.Printf("OutDiscards rollover detected: last=%d, current=%d, diff=%d", i.LastOutDiscards, i.OutDiscards, outDiscDiff)
+			} else {
+				outDiscDiff = i.OutDiscards - i.LastOutDiscards
+			}
+			i.OutDiscardsRate = float64(outDiscDiff) / timeDiff
+
+			log.Printf("Interface %d rates: In=%.2f octets/s, Out=%.2f octets/s, InPkts=%.2f pps, OutPkts=%.2f pps",
+				i.SNMPIndex, i.InOctetsRate, i.OutOctetsRate, i.InPacketsRate, i.OutPacketsRate)
 		}
 	}
 
 	// Update last values for next poll
-	_, err := config.db.Exec("ALTER TABLE interfaces UPDATE last_in_octets = ?, last_out_octets = ?, last_polled_at = ? WHERE id = ?;",
-		i.InOctets, i.OutOctets, currentTime, i.ID)
+	_, err := config.db.Exec("ALTER TABLE interfaces UPDATE last_in_octets = ?, last_out_octets = ?, last_in_packets = ?, last_out_packets = ?, last_in_errors = ?, last_out_errors = ?, last_in_discards = ?, last_out_discards = ?, last_polled_at = ? WHERE id = ?;",
+		i.InOctets, i.OutOctets, i.InPackets, i.OutPackets, i.InErrors, i.OutErrors, i.InDiscards, i.OutDiscards, currentTime, i.ID)
 	if err != nil {
 		log.Println("Error updating last polled values: ", err)
 	}
@@ -803,7 +947,7 @@ func pollInterfaceData(e *Exporter, i *Interface, wg *sync.WaitGroup) {
 }
 
 func getInterfaces(e Exporter) ([]Interface, error) {
-	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled,last_in_octets,last_out_octets,last_polled_at   FROM interfaces where exporter = ?;", e.IPBin)
+	query, err := config.db.Query("SELECT\n  id, created_at, exporter, snmp_index, description, alias,speed,enabled,last_in_octets,last_out_octets,last_in_packets,last_out_packets,last_in_errors,last_out_errors,last_in_discards,last_out_discards,last_polled_at   FROM interfaces where exporter = ?;", e.IPBin)
 	if err != nil {
 		log.Println("Error querying database: ", err)
 		return nil, err
@@ -823,6 +967,12 @@ func getInterfaces(e Exporter) ([]Interface, error) {
 	var ienabled sql.NullBool
 	var ilastinoctets sql.NullInt64
 	var ilastoutoctets sql.NullInt64
+	var ilastinpackets sql.NullInt64
+	var ilastoutpackets sql.NullInt64
+	var ilastinerrors sql.NullInt64
+	var ilastouterrors sql.NullInt64
+	var ilastindiscards sql.NullInt64
+	var ilastoutdiscards sql.NullInt64
 	var ilastpolledat sql.NullTime
 	for query.Next() {
 		var i Interface
@@ -837,6 +987,12 @@ func getInterfaces(e Exporter) ([]Interface, error) {
 			&ienabled,
 			&ilastinoctets,
 			&ilastoutoctets,
+			&ilastinpackets,
+			&ilastoutpackets,
+			&ilastinerrors,
+			&ilastouterrors,
+			&ilastindiscards,
+			&ilastoutdiscards,
 			&ilastpolledat)
 		if err != nil {
 			log.Println("Error scanning data: ", err)
@@ -859,6 +1015,24 @@ func getInterfaces(e Exporter) ([]Interface, error) {
 		}
 		if ilastoutoctets.Valid {
 			i.LastOutOctets = uint64(ilastoutoctets.Int64)
+		}
+		if ilastinpackets.Valid {
+			i.LastInPackets = uint64(ilastinpackets.Int64)
+		}
+		if ilastoutpackets.Valid {
+			i.LastOutPackets = uint64(ilastoutpackets.Int64)
+		}
+		if ilastinerrors.Valid {
+			i.LastInErrors = uint64(ilastinerrors.Int64)
+		}
+		if ilastouterrors.Valid {
+			i.LastOutErrors = uint64(ilastouterrors.Int64)
+		}
+		if ilastindiscards.Valid {
+			i.LastInDiscards = uint64(ilastindiscards.Int64)
+		}
+		if ilastoutdiscards.Valid {
+			i.LastOutDiscards = uint64(ilastoutdiscards.Int64)
 		}
 		if ilastpolledat.Valid {
 			i.LastPolledAt = ilastpolledat.Time
@@ -1037,28 +1211,35 @@ func timer() {
 				}()
 			}
 			if timer%1 == 0 {
-				var configTimerPollInterfaces Config
-				configTimerPollInterfaces.exporters, _ = getExporters()
-				for idx, e := range configTimerPollInterfaces.exporters {
-					configTimerPollInterfaces.exporters[idx].Interfaces, _ = getInterfaces(e)
-				}
-				for idx := range configTimerPollInterfaces.exporters {
-					log.Println(configTimerPollInterfaces.exporters[idx])
-					for jdx := range configTimerPollInterfaces.exporters[idx].Interfaces {
-						log.Println(configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
-						if configTimerPollInterfaces.exporters[idx].Interfaces[jdx].Enabled {
-							configTimerPollInterfaces.wg.Add(1)
-							log.Printf("Polling interface: %s (%d) on exporter %s\n", config.exporters[idx].Interfaces[jdx].Description, config.exporters[idx].Interfaces[jdx].SNMPIndex, config.exporters[idx].IPInet)
-							go func(ex *Exporter, interf *Interface) {
-								pollInterfaceOctets(ex, interf, &configTimerPollInterfaces.wg)
-							}(&configTimerPollInterfaces.exporters[idx], &configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
+				go func() {
+					var configTimerPollInterfaces Config
+					var err error
+					configTimerPollInterfaces.snmp, err = getSnmpConfig()
+					if err != nil {
+						log.Println("Error getting SNMP config: ", err)
+					}
+					configTimerPollInterfaces.exporters, _ = getExporters()
+					for idx, e := range configTimerPollInterfaces.exporters {
+						configTimerPollInterfaces.exporters[idx].Interfaces, _ = getInterfaces(e)
+					}
+					for idx := range configTimerPollInterfaces.exporters {
+						log.Println(configTimerPollInterfaces.exporters[idx])
+						for jdx := range configTimerPollInterfaces.exporters[idx].Interfaces {
+							log.Println(configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
+							if configTimerPollInterfaces.exporters[idx].Interfaces[jdx].Enabled {
+								configTimerPollInterfaces.wg.Add(1)
+								log.Printf("Polling interface: %s (%d) on exporter %s\n", configTimerPollInterfaces.exporters[idx].Interfaces[jdx].Description, configTimerPollInterfaces.exporters[idx].Interfaces[jdx].SNMPIndex, configTimerPollInterfaces.exporters[idx].IPInet)
+								go func(ex *Exporter, interf *Interface) {
+									pollInterfaceOctets(ex, interf, &configTimerPollInterfaces.wg)
+								}(&configTimerPollInterfaces.exporters[idx], &configTimerPollInterfaces.exporters[idx].Interfaces[jdx])
+							}
 						}
 					}
-				}
-				log.Println("Waiting for all pollInterfaceData goroutines to finish...")
-				configTimerPollInterfaces.wg.Wait()
-				log.Println("All done!!")
-				log.Println(configTimerPollInterfaces)
+					log.Println("Waiting for all pollInterfaceData goroutines to finish...")
+					configTimerPollInterfaces.wg.Wait()
+					log.Println("All done!!")
+					log.Println(configTimerPollInterfaces)
+				}()
 			}
 
 		case <-sigCh:
